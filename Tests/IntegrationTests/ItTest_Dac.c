@@ -611,7 +611,7 @@ void It_Dac_DmaUnderrun_StreamDisabled_ErrorReported( void )
     It_Dac_Tim6_Start();
     TEST_ASSERT_EQUAL_UINT32( 1u, It_Dac_Wait( &itDac_CompleteCnt, 1u ) );
 
-    TEST_ASSERT_EQUAL( DMA_REQUEST_OK, Dma_Set_TransferInactive( (dma_PeriphId_t)dataConfig.DmaPeriphId, (dma_ChannelId_t)dataConfig.DmaChannelId ) );
+    TEST_ASSERT_EQUAL( DMA_REQUEST_OK, Dma_Set_TransferInactive( (dma_PeriphId_t)DAC_DMA_BIT_MASK_DECODE_DMA( dataConfig.Dma ), (dma_ChannelId_t)DAC_DMA_BIT_MASK_DECODE_STREAM( dataConfig.Dma ) ) );
 
     TEST_ASSERT_EQUAL_UINT32( 1u, It_Dac_Wait( &itDac_ErrorCnt, 1u ) );
     It_Dac_Tim6_Stop();

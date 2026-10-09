@@ -68,6 +68,21 @@ static void                 Ut_Dac_ErrorCallback        ( dac_ErrorId_t errorId 
 #define UT_DAC_DMA_STREAM_CH1               ( DMA_STREAM_5 )
 #define UT_DAC_DMA_STREAM_CH2               ( DMA_STREAM_6 )
 
+/** Encoded DMA stream from the DAC peripheral index, DAC channel index, DMA peripheral index, stream number and
+ *  channel selection number (bit-fields written independently of DAC_DMA_ENCODE) */
+#define UT_DAC_DMA_CODE( PERIPH, CHANNEL, DMA, STREAM, CHSEL )  ( ( (PERIPH) << 20u ) | ( (CHANNEL) << 15u ) | ( (DMA) << 10u ) | ( (STREAM) << 5u ) | (CHSEL) )
+
+/** Channel and enable bit used by tests which need "any enabled channel" (channel 2, channel 1 without channel 2) */
+#if defined(DAC_CHANNEL2_SUPPORT)
+    #define UT_DAC_CH_LAST                  ( DAC_CHANNEL_2 )
+    #define UT_DAC_CR_EN_LAST               ( DAC_CR_EN2 )
+    #define UT_DAC_CH_INVALID_SLOT          ( DAC_CHANNEL_2 )
+#else
+    #define UT_DAC_CH_LAST                  ( DAC_CHANNEL_1 )
+    #define UT_DAC_CR_EN_LAST               ( DAC_CR_EN1 )
+    #define UT_DAC_CH_INVALID_SLOT          ( DAC_CHANNEL_CNT )
+#endif /* DAC_CHANNEL2_SUPPORT */
+
 /** Interrupt priority of test configurations */
 #define UT_DAC_PRIO                         ( 6u )
 
@@ -220,21 +235,25 @@ void Ut_Dac_Get_DefaultConfig_DefaultValues( void )
     TEST_ASSERT_EQUAL( DAC_REQUEST_OK, Dac_Get_DefaultConfig( &config ) );
 
     const dac_ChannelConfig_t * const ch1Cfg = &config.PeriphConfig[ UT_DAC_PERIPH ].Channels[ DAC_CHANNEL_1 ];
+#if defined(DAC_CHANNEL2_SUPPORT)
     const dac_ChannelConfig_t * const ch2Cfg = &config.PeriphConfig[ UT_DAC_PERIPH ].Channels[ DAC_CHANNEL_2 ];
+#endif /* DAC_CHANNEL2_SUPPORT */
 
     TEST_ASSERT_EQUAL( DAC_CLK_SRC_PCLK1, config.ClockSource );
     TEST_ASSERT_EQUAL( UT_DAC_PERIPH, config.PeriphConfig[ UT_DAC_PERIPH ].PeriphId );
     TEST_ASSERT_EQUAL( DAC_FUNCTION_ACTIVE,         ch1Cfg->ChannelUsed );
+#if defined(DAC_CHANNEL2_SUPPORT)
     TEST_ASSERT_EQUAL( DAC_FUNCTION_INACTIVE,       ch2Cfg->ChannelUsed );
+#endif /* DAC_CHANNEL2_SUPPORT */
     TEST_ASSERT_EQUAL( DAC_OUTPUT_PIN_BUFFERED,     ch1Cfg->OutputMode );
     TEST_ASSERT_EQUAL( DAC_TRIGGER_NONE,            ch1Cfg->TriggerId );
     TEST_ASSERT_EQUAL( DAC_DATA_FORMAT_12BIT_RIGHT, ch1Cfg->DataFormat );
     TEST_ASSERT_EQUAL( DAC_FUNCTION_INACTIVE,       ch1Cfg->SampleHold.State );
     TEST_ASSERT_EQUAL( DAC_TRANSFER_MODE_DIRECT,    ch1Cfg->DataConfig.TransferMode );
-    TEST_ASSERT_EQUAL( DAC_DMA_PERIPH_1,            ch1Cfg->DataConfig.DmaPeriphId );
-    TEST_ASSERT_EQUAL( DAC_DMA_CHANNEL_5,           ch1Cfg->DataConfig.DmaChannelId );
-    TEST_ASSERT_EQUAL( DAC_DMA_PERIPH_1,            ch2Cfg->DataConfig.DmaPeriphId );
-    TEST_ASSERT_EQUAL( DAC_DMA_CHANNEL_6,           ch2Cfg->DataConfig.DmaChannelId );
+    TEST_ASSERT_EQUAL( DAC_DMA_DAC1_CH1_DMA1_STREAM5, ch1Cfg->DataConfig.Dma );
+#if defined(DAC_CHANNEL2_SUPPORT)
+    TEST_ASSERT_EQUAL( DAC_DMA_DAC1_CH2_DMA1_STREAM6, ch2Cfg->DataConfig.Dma );
+#endif /* DAC_CHANNEL2_SUPPORT */
 }
 
 
@@ -285,6 +304,7 @@ void Ut_Dac_Init_DefaultConfig_Channel1Initialized( void )
  */
 void Ut_Dac_Init_UnbufferedChannel2_PinAndBufferConfigured( void )
 {
+#if defined(DAC_CHANNEL2_SUPPORT)
     dac_Config_t     config;
     dac_OutputMode_t outputMode = DAC_OUTPUT_CNT;
 
@@ -303,6 +323,9 @@ void Ut_Dac_Init_UnbufferedChannel2_PinAndBufferConfigured( void )
 
     TEST_ASSERT_EQUAL( DAC_REQUEST_OK, Dac_Get_OutputMode( UT_DAC_PERIPH, DAC_CHANNEL_2, &outputMode ) );
     TEST_ASSERT_EQUAL( DAC_OUTPUT_PIN_UNBUFFERED, outputMode );
+#else
+    TEST_IGNORE_MESSAGE( "MCU without DAC channel 2" );
+#endif /* DAC_CHANNEL2_SUPPORT */
 }
 
 
@@ -318,12 +341,12 @@ void Ut_Dac_Init_ChannelEnabled_ReturnsError( void )
 
     Ut_Dac_Get_Config( &config );
     Ut_Dac_Ignore_PeriphMocks();
-    UT_DAC_REG->CR = DAC_CR_EN2;
+    UT_DAC_REG->CR = UT_DAC_CR_EN_LAST;
 
     TEST_ASSERT_EQUAL( DAC_REQUEST_ERROR, Dac_Init( &config ) );
 
     TEST_ASSERT_EQUAL_UINT32( 0u, utDac_RccActiveCnt );
-    TEST_ASSERT_EQUAL_HEX32( DAC_CR_EN2, UT_DAC_REG->CR );
+    TEST_ASSERT_EQUAL_HEX32( UT_DAC_CR_EN_LAST, UT_DAC_REG->CR );
 }
 
 
@@ -356,7 +379,7 @@ void Ut_Dac_Init_InvalidChannelConfig_ReturnsErrorWithoutRegisterWrite( void )
     TEST_ASSERT_EQUAL( DAC_REQUEST_ERROR, Dac_Init( &config ) );
 
     Ut_Dac_Get_Config( &config );
-    config.PeriphConfig[ UT_DAC_PERIPH ].Channels[ DAC_CHANNEL_1 ].ChannelId = DAC_CHANNEL_2;
+    config.PeriphConfig[ UT_DAC_PERIPH ].Channels[ DAC_CHANNEL_1 ].ChannelId = UT_DAC_CH_INVALID_SLOT;
     TEST_ASSERT_EQUAL( DAC_REQUEST_ERROR, Dac_Init( &config ) );
 
     Ut_Dac_Get_Config( &config );
@@ -406,7 +429,7 @@ void Ut_Dac_Init_UnsupportedFeature_ReturnsErrorWithoutRegisterWrite( void )
 
     Ut_Dac_Get_Config( &config );
     Ut_Dac_Set_DmaConfig( &config.PeriphConfig[ UT_DAC_PERIPH ].Channels[ DAC_CHANNEL_1 ], DAC_BUFFER_MODE_ONE_SHOT );
-    config.PeriphConfig[ UT_DAC_PERIPH ].Channels[ DAC_CHANNEL_1 ].DataConfig.DmaChannelId = DAC_DMA_CHANNEL_6;
+    config.PeriphConfig[ UT_DAC_PERIPH ].Channels[ DAC_CHANNEL_1 ].DataConfig.Dma = (dac_Dma_t)DAC_DMA_ENCODE( DAC_PERIPH_1, DAC_CHANNEL_1, DAC_DMA_PERIPH_1, DAC_DMA_CHANNEL_6, 7u );
     TEST_ASSERT_EQUAL( DAC_REQUEST_ERROR, Dac_Init( &config ) );
 
     TEST_ASSERT_EQUAL_HEX32( 0u, UT_DAC_REG->CR );
@@ -430,7 +453,9 @@ void Ut_Dac_Deinit_DirectChannels_ChannelsAndClockDisabled( void )
     dac_Config_t config;
 
     Ut_Dac_Get_Config( &config );
+#if defined(DAC_CHANNEL2_SUPPORT)
     config.PeriphConfig[ UT_DAC_PERIPH ].Channels[ DAC_CHANNEL_2 ].ChannelUsed = DAC_FUNCTION_ACTIVE;
+#endif /* DAC_CHANNEL2_SUPPORT */
     Ut_Dac_Init( &config );
     Ut_Dac_Reset_Mocks();
 
@@ -455,6 +480,7 @@ void Ut_Dac_Deinit_DirectChannels_ChannelsAndClockDisabled( void )
  */
 void Ut_Dac_Deinit_DmaChannel_DmaAndInterruptReleased( void )
 {
+#if defined(DAC_CHANNEL2_SUPPORT)
     dac_Config_t config;
 
     Ut_Dac_Get_Config( &config );
@@ -471,6 +497,9 @@ void Ut_Dac_Deinit_DmaChannel_DmaAndInterruptReleased( void )
 
     TEST_ASSERT_EQUAL( DAC_REQUEST_OK, Dac_Deinit( UT_DAC_PERIPH ) );
     TEST_ASSERT_EQUAL_HEX32( 0u, UT_DAC_REG->CR & ( DAC_CR_EN1 | DAC_CR_EN2 | DAC_CR_DMAEN2 | DAC_CR_DMAUDRIE2 ) );
+#else
+    TEST_IGNORE_MESSAGE( "MCU without DAC channel 2" );
+#endif /* DAC_CHANNEL2_SUPPORT */
 }
 
 /* ============================ CLOCK SOURCES =============================== */
@@ -548,12 +577,14 @@ void Ut_Dac_SampleHold_InactiveOnly( void )
     TEST_ASSERT_EQUAL( DAC_REQUEST_ERROR, Dac_Set_SampleHoldConfig( UT_DAC_PERIPH, DAC_CHANNEL_1, &shConfig ) );
     TEST_ASSERT_EQUAL( DAC_REQUEST_ERROR, Dac_Set_SampleHoldConfig( UT_DAC_PERIPH, DAC_CHANNEL_1, NULL ) );
 
+#if defined(DAC_CHANNEL2_SUPPORT)
     TEST_ASSERT_EQUAL( DAC_REQUEST_OK, Dac_Get_SampleHoldConfig( UT_DAC_PERIPH, DAC_CHANNEL_2, &shConfig ) );
     TEST_ASSERT_EQUAL( DAC_FUNCTION_INACTIVE, shConfig.State );
     TEST_ASSERT_EQUAL_UINT16( 0u, shConfig.SampleTime );
     TEST_ASSERT_EQUAL_UINT16( 0u, shConfig.HoldTime );
     TEST_ASSERT_EQUAL_UINT8( 0u, shConfig.RefreshTime );
     TEST_ASSERT_EQUAL( DAC_REQUEST_ERROR, Dac_Get_SampleHoldConfig( UT_DAC_PERIPH, DAC_CHANNEL_2, NULL ) );
+#endif /* DAC_CHANNEL2_SUPPORT */
 
     TEST_ASSERT_EQUAL_HEX32( 0u, UT_DAC_REG->CR );
 }
@@ -599,14 +630,14 @@ void Ut_Dac_Set_OutputMode_PinModes_ReadBack( void )
  */
 void Ut_Dac_Set_ChannelConfig_ChannelEnabled_ReturnsErrorWithoutWrite( void )
 {
-    UT_DAC_REG->CR = DAC_CR_EN2;
+    UT_DAC_REG->CR = UT_DAC_CR_EN_LAST;
 
-    TEST_ASSERT_EQUAL( DAC_REQUEST_ERROR, Dac_Set_OutputMode( UT_DAC_PERIPH, DAC_CHANNEL_2, DAC_OUTPUT_PIN_UNBUFFERED ) );
-    TEST_ASSERT_EQUAL( DAC_REQUEST_ERROR, Dac_Set_TriggerSrc( UT_DAC_PERIPH, DAC_CHANNEL_2, DAC_TRIGGER_TIM6_TRGO ) );
-    TEST_ASSERT_EQUAL( DAC_REQUEST_ERROR, Dac_Set_WaveMode( UT_DAC_PERIPH, DAC_CHANNEL_2, DAC_WAVE_NOISE ) );
-    TEST_ASSERT_EQUAL( DAC_REQUEST_ERROR, Dac_Set_WaveAmplitude( UT_DAC_PERIPH, DAC_CHANNEL_2, DAC_WAVE_AMPLITUDE_255 ) );
+    TEST_ASSERT_EQUAL( DAC_REQUEST_ERROR, Dac_Set_OutputMode( UT_DAC_PERIPH, UT_DAC_CH_LAST, DAC_OUTPUT_PIN_UNBUFFERED ) );
+    TEST_ASSERT_EQUAL( DAC_REQUEST_ERROR, Dac_Set_TriggerSrc( UT_DAC_PERIPH, UT_DAC_CH_LAST, DAC_TRIGGER_TIM6_TRGO ) );
+    TEST_ASSERT_EQUAL( DAC_REQUEST_ERROR, Dac_Set_WaveMode( UT_DAC_PERIPH, UT_DAC_CH_LAST, DAC_WAVE_NOISE ) );
+    TEST_ASSERT_EQUAL( DAC_REQUEST_ERROR, Dac_Set_WaveAmplitude( UT_DAC_PERIPH, UT_DAC_CH_LAST, DAC_WAVE_AMPLITUDE_255 ) );
 
-    TEST_ASSERT_EQUAL_HEX32( DAC_CR_EN2, UT_DAC_REG->CR );
+    TEST_ASSERT_EQUAL_HEX32( UT_DAC_CR_EN_LAST, UT_DAC_REG->CR );
 }
 
 
@@ -620,6 +651,7 @@ void Ut_Dac_Set_ChannelConfig_ChannelEnabled_ReturnsErrorWithoutWrite( void )
  */
 void Ut_Dac_Set_TriggerSrc_AllTriggers_ReadBack( void )
 {
+#if defined(DAC_CHANNEL2_SUPPORT)
     dac_TriggerId_t triggerSrc = DAC_TRIGGER_CNT;
 
     for( dac_TriggerId_t trigIdx = DAC_TRIGGER_NONE; DAC_TRIGGER_CNT > trigIdx; trigIdx++ )
@@ -649,6 +681,9 @@ void Ut_Dac_Set_TriggerSrc_AllTriggers_ReadBack( void )
 
     TEST_ASSERT_EQUAL( DAC_REQUEST_ERROR, Dac_Set_TriggerSrc( UT_DAC_PERIPH, DAC_CHANNEL_2, DAC_TRIGGER_CNT ) );
     TEST_ASSERT_EQUAL( DAC_REQUEST_ERROR, Dac_Get_TriggerSrc( UT_DAC_PERIPH, DAC_CHANNEL_2, NULL ) );
+#else
+    TEST_IGNORE_MESSAGE( "MCU without DAC channel 2" );
+#endif /* DAC_CHANNEL2_SUPPORT */
 }
 
 
@@ -660,6 +695,7 @@ void Ut_Dac_Set_TriggerSrc_AllTriggers_ReadBack( void )
  */
 void Ut_Dac_Set_WaveModeAmplitude_ReadBack( void )
 {
+#if defined(DAC_CHANNEL2_SUPPORT)
     dac_WaveMode_t      waveMode  = DAC_WAVE_CNT;
     dac_WaveAmplitude_t amplitude = DAC_WAVE_AMPLITUDE_CNT;
 
@@ -679,6 +715,9 @@ void Ut_Dac_Set_WaveModeAmplitude_ReadBack( void )
 
     TEST_ASSERT_EQUAL( DAC_REQUEST_ERROR, Dac_Set_WaveMode( UT_DAC_PERIPH, DAC_CHANNEL_1, DAC_WAVE_CNT ) );
     TEST_ASSERT_EQUAL( DAC_REQUEST_ERROR, Dac_Set_WaveAmplitude( UT_DAC_PERIPH, DAC_CHANNEL_1, DAC_WAVE_AMPLITUDE_CNT ) );
+#else
+    TEST_IGNORE_MESSAGE( "MCU without DAC channel 2" );
+#endif /* DAC_CHANNEL2_SUPPORT */
 }
 
 
@@ -719,6 +758,7 @@ void Ut_Dac_Set_ChannelActive_EnableBit_ReadBack( void )
  */
 void Ut_Dac_Set_Data_DataFormats_HoldingRegisterWritten( void )
 {
+#if defined(DAC_CHANNEL2_SUPPORT)
     dac_DataFormat_t dataFormat = DAC_DATA_FORMAT_CNT;
 
     TEST_ASSERT_EQUAL( DAC_REQUEST_OK, Dac_Set_Data( UT_DAC_PERIPH, DAC_CHANNEL_2, 0x0FFFu ) );
@@ -739,6 +779,9 @@ void Ut_Dac_Set_Data_DataFormats_HoldingRegisterWritten( void )
     TEST_ASSERT_EQUAL( DAC_REQUEST_ERROR, Dac_Set_DataFormat( UT_DAC_PERIPH, DAC_CHANNEL_2, DAC_DATA_FORMAT_CNT ) );
 
     TEST_ASSERT_EQUAL_HEX32( 0u, UT_DAC_REG->DHR12R1 );
+#else
+    TEST_IGNORE_MESSAGE( "MCU without DAC channel 2" );
+#endif /* DAC_CHANNEL2_SUPPORT */
 }
 
 
@@ -752,6 +795,7 @@ void Ut_Dac_Set_Data_DataFormats_HoldingRegisterWritten( void )
  */
 void Ut_Dac_Set_DualData_SameFormat_DualRegisterWritten( void )
 {
+#if defined(DAC_CHANNEL2_SUPPORT)
     TEST_ASSERT_EQUAL( DAC_REQUEST_OK, Dac_Set_DualData( UT_DAC_PERIPH, 0x0123u, 0x0456u ) );
     TEST_ASSERT_EQUAL_HEX32( 0x04560123u, UT_DAC_REG->DHR12RD );
 
@@ -769,6 +813,9 @@ void Ut_Dac_Set_DualData_SameFormat_DualRegisterWritten( void )
 
     TEST_ASSERT_EQUAL( DAC_REQUEST_ERROR, Dac_Set_DualData( UT_DAC_PERIPH, 0x12u, 0x134u ) );
     TEST_ASSERT_EQUAL( DAC_REQUEST_ERROR, Dac_Set_DualData( DAC_PERIPH_CNT, 0x12u, 0x34u ) );
+#else
+    TEST_IGNORE_MESSAGE( "MCU without DAC channel 2" );
+#endif /* DAC_CHANNEL2_SUPPORT */
 }
 
 
@@ -790,12 +837,14 @@ void Ut_Dac_Get_OutputData_OutputRegister_ValueAndVoltage( void )
     TEST_ASSERT_EQUAL( DAC_REQUEST_OK, Dac_Get_OutputVoltage( UT_DAC_PERIPH, DAC_CHANNEL_1, 3300u, &outVoltage ) );
     TEST_ASSERT_EQUAL_UINT16( 3300u, outVoltage );
 
+#if defined(DAC_CHANNEL2_SUPPORT)
     UT_DAC_REG->DOR2 = 2048u;
     TEST_ASSERT_EQUAL( DAC_REQUEST_OK, Dac_Get_OutputVoltage( UT_DAC_PERIPH, DAC_CHANNEL_2, 3300u, &outVoltage ) );
     TEST_ASSERT_EQUAL_UINT16( 1650u, outVoltage );
 
     TEST_ASSERT_EQUAL( DAC_REQUEST_ERROR, Dac_Get_OutputVoltage( UT_DAC_PERIPH, DAC_CHANNEL_2, 0u, &outVoltage ) );
     TEST_ASSERT_EQUAL( DAC_REQUEST_ERROR, Dac_Get_OutputVoltage( UT_DAC_PERIPH, DAC_CHANNEL_2, 3300u, NULL ) );
+#endif /* DAC_CHANNEL2_SUPPORT */
     TEST_ASSERT_EQUAL( DAC_REQUEST_ERROR, Dac_Get_OutputData( UT_DAC_PERIPH, DAC_CHANNEL_CNT, &outData ) );
 }
 
@@ -829,8 +878,10 @@ void Ut_Dac_Get_DataFromVoltage_DataFormats_Converted( void )
     TEST_ASSERT_EQUAL( DAC_REQUEST_ERROR, Dac_Get_DataFromVoltage( UT_DAC_PERIPH, DAC_CHANNEL_1, 0u, 0u, &data ) );
     TEST_ASSERT_EQUAL( DAC_REQUEST_ERROR, Dac_Get_DataFromVoltage( UT_DAC_PERIPH, DAC_CHANNEL_1, 3300u, 0u, NULL ) );
 
+#if defined(DAC_CHANNEL2_SUPPORT)
     TEST_ASSERT_EQUAL( DAC_REQUEST_OK, Dac_Set_Voltage( UT_DAC_PERIPH, DAC_CHANNEL_2, 3300u, 1000u ) );
     TEST_ASSERT_EQUAL_HEX32( 1241u, UT_DAC_REG->DHR12R2 );
+#endif /* DAC_CHANNEL2_SUPPORT */
 }
 
 
@@ -846,7 +897,9 @@ void Ut_Dac_Set_SwTrigger_SoftwareTriggerSelected_SwtrigSet( void )
     TEST_ASSERT_EQUAL( DAC_REQUEST_ERROR, Dac_Set_SwTrigger( UT_DAC_PERIPH, DAC_CHANNEL_1 ) );
 
     TEST_ASSERT_EQUAL( DAC_REQUEST_OK, Dac_Set_TriggerSrc( UT_DAC_PERIPH, DAC_CHANNEL_1, DAC_TRIGGER_SOFTWARE ) );
+#if defined(DAC_CHANNEL2_SUPPORT)
     TEST_ASSERT_EQUAL( DAC_REQUEST_OK, Dac_Set_TriggerSrc( UT_DAC_PERIPH, DAC_CHANNEL_2, DAC_TRIGGER_SOFTWARE ) );
+#endif /* DAC_CHANNEL2_SUPPORT */
     TEST_ASSERT_EQUAL( DAC_REQUEST_ERROR, Dac_Set_SwTrigger( UT_DAC_PERIPH, DAC_CHANNEL_1 ) );
     TEST_ASSERT_EQUAL_HEX32( 0u, UT_DAC_REG->SWTRIGR );
 
@@ -855,9 +908,11 @@ void Ut_Dac_Set_SwTrigger_SoftwareTriggerSelected_SwtrigSet( void )
     TEST_ASSERT_EQUAL( DAC_REQUEST_OK, Dac_Set_SwTrigger( UT_DAC_PERIPH, DAC_CHANNEL_1 ) );
     TEST_ASSERT_EQUAL_HEX32( DAC_SWTRIGR_SWTRIG1, UT_DAC_REG->SWTRIGR );
 
+#if defined(DAC_CHANNEL2_SUPPORT)
     UT_DAC_REG->CR |= DAC_CR_EN2;
     TEST_ASSERT_EQUAL( DAC_REQUEST_OK, Dac_Set_DualSwTrigger( UT_DAC_PERIPH ) );
     TEST_ASSERT_EQUAL_HEX32( DAC_SWTRIGR_SWTRIG1 | DAC_SWTRIGR_SWTRIG2, UT_DAC_REG->SWTRIGR );
+#endif /* DAC_CHANNEL2_SUPPORT */
 
     TEST_ASSERT_EQUAL( DAC_REQUEST_ERROR, Dac_Set_DualSwTrigger( DAC_PERIPH_CNT ) );
 }
@@ -873,6 +928,7 @@ void Ut_Dac_Set_SwTrigger_SoftwareTriggerSelected_SwtrigSet( void )
  */
 void Ut_Dac_Get_Flag_UnderrunOnly( void )
 {
+#if defined(DAC_CHANNEL2_SUPPORT)
     dac_FlagState_t flagState = DAC_FLAG_INACTIVE;
 
     UT_DAC_REG->SR = DAC_SR_DMAUDR2;
@@ -893,6 +949,9 @@ void Ut_Dac_Get_Flag_UnderrunOnly( void )
     TEST_ASSERT_EQUAL_HEX32( 0u, UT_DAC_REG->SR );
     TEST_ASSERT_EQUAL( DAC_REQUEST_OK, Dac_Clear_Flag( UT_DAC_PERIPH, DAC_CHANNEL_2, DAC_FLAG_DMA_UNDERRUN ) );
     TEST_ASSERT_EQUAL_HEX32( DAC_SR_DMAUDR2, UT_DAC_REG->SR );
+#else
+    TEST_IGNORE_MESSAGE( "MCU without DAC channel 2" );
+#endif /* DAC_CHANNEL2_SUPPORT */
 }
 
 /* ============================== DMA TRANSFER ============================== */
@@ -957,13 +1016,23 @@ void Ut_Dac_Set_DataConfig_InvalidDmaConfig_ReturnsError( void )
     TEST_ASSERT_EQUAL( DAC_REQUEST_ERROR, Dac_Set_DataConfig( UT_DAC_PERIPH, DAC_CHANNEL_1, &dataCfg ) );
 #endif /* CCMDATARAM_BASE */
 
-    dataCfg              = channelCfg.DataConfig;
-    dataCfg.DmaChannelId = DAC_DMA_CHANNEL_6;
+    dataCfg     = channelCfg.DataConfig;
+    dataCfg.Dma = (dac_Dma_t)DAC_DMA_ENCODE( DAC_PERIPH_1, DAC_CHANNEL_1, DAC_DMA_PERIPH_1, DAC_DMA_CHANNEL_6, 7u );
     TEST_ASSERT_EQUAL( DAC_REQUEST_ERROR, Dac_Set_DataConfig( UT_DAC_PERIPH, DAC_CHANNEL_1, &dataCfg ) );
 
-    dataCfg             = channelCfg.DataConfig;
-    dataCfg.DmaPeriphId = DAC_DMA_PERIPH_2;
+    dataCfg     = channelCfg.DataConfig;
+    dataCfg.Dma = DAC_DMA_UNUSED;
     TEST_ASSERT_EQUAL( DAC_REQUEST_ERROR, Dac_Set_DataConfig( UT_DAC_PERIPH, DAC_CHANNEL_1, &dataCfg ) );
+
+    dataCfg     = channelCfg.DataConfig;
+    dataCfg.Dma = (dac_Dma_t)DAC_DMA_ENCODE( DAC_PERIPH_1, DAC_CHANNEL_1, DAC_DMA_PERIPH_2, DAC_DMA_CHANNEL_5, 7u );
+    TEST_ASSERT_EQUAL( DAC_REQUEST_ERROR, Dac_Set_DataConfig( UT_DAC_PERIPH, DAC_CHANNEL_1, &dataCfg ) );
+
+#if defined(DAC_CHANNEL2_SUPPORT)
+    dataCfg     = channelCfg.DataConfig;
+    dataCfg.Dma = DAC_DMA_DAC1_CH2_DMA1_STREAM6;
+    TEST_ASSERT_EQUAL( DAC_REQUEST_ERROR, Dac_Set_DataConfig( UT_DAC_PERIPH, DAC_CHANNEL_1, &dataCfg ) );
+#endif /* DAC_CHANNEL2_SUPPORT */
 
     dataCfg             = channelCfg.DataConfig;
     dataCfg.DmaPriority = (dac_DmaPriority_t)DMA_PRIORITY_CNT;
@@ -993,6 +1062,7 @@ void Ut_Dac_Set_DataConfig_InvalidDmaConfig_ReturnsError( void )
  */
 void Ut_Dac_Init_DmaMode_StreamInitialized( void )
 {
+#if defined(DAC_CHANNEL2_SUPPORT)
     dac_Config_t     config;
     dac_DataConfig_t dataConfig;
 
@@ -1028,6 +1098,77 @@ void Ut_Dac_Init_DmaMode_StreamInitialized( void )
     TEST_ASSERT_EQUAL( DAC_REQUEST_OK, Dac_Get_DataConfig( UT_DAC_PERIPH, DAC_CHANNEL_2, &dataConfig ) );
     TEST_ASSERT_EQUAL( DAC_TRANSFER_MODE_DMA, dataConfig.TransferMode );
     TEST_ASSERT_EQUAL_PTR( utDac_Buffer, dataConfig.DataBuffer );
+
+    /* Channel selection of the list item equals the one used by the request map */
+    TEST_ASSERT_EQUAL_UINT32( (uint32_t)utDac_DmaConfig.PeripheralReqId >> DMA_SxCR_CHSEL_Pos, DAC_DMA_BIT_MASK_DECODE_CHSEL( DAC_DMA_DAC1_CH2_DMA1_STREAM6 ) );
+#else
+    TEST_IGNORE_MESSAGE( "MCU without DAC channel 2" );
+#endif /* DAC_CHANNEL2_SUPPORT */
+}
+
+
+/**
+ * \brief   Dac_Init() in DMA mode of channel 1 initializes the stream of its DMA request.
+ *
+ * \details Channel 1, TIM6 trigger, DMA buffer of 8 items, 12-bit right aligned format.
+ *
+ * \par Expected results
+ * - Dma_Init() called once: DMA1 stream 5, channel selection 7, memory to peripheral,
+ *   peripheral = DHR12R1.
+ * - The channel selection stored in the list item equals the request map.
+ */
+void Ut_Dac_Init_DmaModeChannel1_StreamInitialized( void )
+{
+    dac_Config_t config;
+
+    Ut_Dac_Get_Config( &config );
+    Ut_Dac_Set_DmaConfig( &config.PeriphConfig[ UT_DAC_PERIPH ].Channels[ DAC_CHANNEL_1 ], DAC_BUFFER_MODE_ONE_SHOT );
+    Ut_Dac_Init( &config );
+
+    TEST_ASSERT_EQUAL_UINT32( 1u, utDac_DmaInitCnt );
+    TEST_ASSERT_EQUAL( UT_DAC_DMA_PERIPH, utDac_DmaConfig.DmaPeriphId );
+    TEST_ASSERT_EQUAL( UT_DAC_DMA_STREAM_CH1, utDac_DmaConfig.DmaChannel );
+    TEST_ASSERT_EQUAL( DMA_REQ_CHANNEL_7, utDac_DmaConfig.PeripheralReqId );
+    TEST_ASSERT_EQUAL( DMA_DIR_MEMORY_TO_PERIPH, utDac_DmaConfig.Direction );
+    TEST_ASSERT_EQUAL_HEX32( (uint32_t)(uintptr_t)&UT_DAC_REG->DHR12R1, utDac_DmaConfig.PeriphAddress );
+
+    TEST_ASSERT_EQUAL_UINT32( (uint32_t)utDac_DmaConfig.PeripheralReqId >> DMA_SxCR_CHSEL_Pos, DAC_DMA_BIT_MASK_DECODE_CHSEL( DAC_DMA_DAC1_CH1_DMA1_STREAM5 ) );
+}
+
+
+/**
+ * \brief   Items of the DMA stream list carry DAC peripheral, DAC channel, DMA peripheral, stream and
+ *          channel selection of the stream.
+ *
+ * \details Expected values are written as (DAC peripheral index, DAC channel index, DMA peripheral
+ *          index, stream number, channel selection number) taken from the DMA1 request mapping of
+ *          the STM32F4 reference manuals, independently of the encoding macro.
+ *
+ * \par Expected results
+ * - The items of the DAC channels of the MCU carry the expected bit-fields.
+ * - The unused item equals DAC_DMA_CODE_UNUSED, the decoding macros return the fields.
+ */
+void Ut_Dac_DmaList_Items_EncodePeriphChannelDmaStreamAndChannelSelection( void )
+{
+    /* DMA1 (index 0), channel selection 7 */
+    TEST_ASSERT_EQUAL_HEX32( UT_DAC_DMA_CODE( 0u, 0u, 0u, 5u, 7u ), DAC_DMA_DAC1_CH1_DMA1_STREAM5 );
+#if defined(DAC_CHANNEL2_SUPPORT)
+    TEST_ASSERT_EQUAL_HEX32( UT_DAC_DMA_CODE( 0u, 1u, 0u, 6u, 7u ), DAC_DMA_DAC1_CH2_DMA1_STREAM6 );
+#endif /* DAC_CHANNEL2_SUPPORT */
+
+    /* Decoding of the fields */
+    TEST_ASSERT_EQUAL_UINT32( DAC_PERIPH_1,       DAC_DMA_BIT_MASK_DECODE_PERIPH( DAC_DMA_DAC1_CH1_DMA1_STREAM5 ) );
+    TEST_ASSERT_EQUAL_UINT32( DAC_CHANNEL_1,      DAC_DMA_BIT_MASK_DECODE_CHANNEL( DAC_DMA_DAC1_CH1_DMA1_STREAM5 ) );
+    TEST_ASSERT_EQUAL_UINT32( DAC_DMA_PERIPH_1,   DAC_DMA_BIT_MASK_DECODE_DMA( DAC_DMA_DAC1_CH1_DMA1_STREAM5 ) );
+    TEST_ASSERT_EQUAL_UINT32( DAC_DMA_CHANNEL_5,  DAC_DMA_BIT_MASK_DECODE_STREAM( DAC_DMA_DAC1_CH1_DMA1_STREAM5 ) );
+    TEST_ASSERT_EQUAL_UINT32( 7u,                 DAC_DMA_BIT_MASK_DECODE_CHSEL( DAC_DMA_DAC1_CH1_DMA1_STREAM5 ) );
+
+    /* Unused stream */
+    TEST_ASSERT_EQUAL_HEX32( DAC_DMA_CODE_UNUSED, DAC_DMA_UNUSED );
+    TEST_ASSERT_EQUAL_UINT32( DAC_PERIPH_CNT,      DAC_DMA_BIT_MASK_DECODE_PERIPH( DAC_DMA_UNUSED ) );
+    TEST_ASSERT_EQUAL_UINT32( DAC_CHANNEL_CNT,     DAC_DMA_BIT_MASK_DECODE_CHANNEL( DAC_DMA_UNUSED ) );
+    TEST_ASSERT_EQUAL_UINT32( DAC_DMA_PERIPH_CNT,  DAC_DMA_BIT_MASK_DECODE_DMA( DAC_DMA_UNUSED ) );
+    TEST_ASSERT_EQUAL_UINT32( DAC_DMA_CHANNEL_CNT, DAC_DMA_BIT_MASK_DECODE_STREAM( DAC_DMA_UNUSED ) );
 }
 
 
@@ -1322,6 +1463,7 @@ void Ut_Dac_DmaError_TransferError_ReportedAndStopped( void )
  */
 void Ut_Dac_Isr_DmaUnderrun_ReportedAndStopped( void )
 {
+#if defined(DAC_CHANNEL2_SUPPORT)
     dac_Config_t config;
 
     Ut_Dac_Get_Config( &config );
@@ -1343,6 +1485,9 @@ void Ut_Dac_Isr_DmaUnderrun_ReportedAndStopped( void )
     UT_DAC_REG->SR = 0u;
     utDac_Isr();
     TEST_ASSERT_EQUAL_UINT32( 1u, utDac_ErrorCnt );
+#else
+    TEST_IGNORE_MESSAGE( "MCU without DAC channel 2" );
+#endif /* DAC_CHANNEL2_SUPPORT */
 }
 
 

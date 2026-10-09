@@ -28,7 +28,7 @@ extern "C" {
 
 /* ======================== EXPORTED FUNCTIONS ============================== */
 
-dac_RequestState_t Dac_Dma_Get_Stream   ( dac_PeriphId_t periphId, dac_ChannelId_t channelId, dac_DmaPeriphId_t * const dmaPeriphId, dac_DmaChannelId_t * const dmaChannelId );
+dac_RequestState_t Dac_Dma_Get_Stream   ( dac_PeriphId_t periphId, dac_ChannelId_t channelId, dac_Dma_t * const dma );
 dac_RequestState_t Dac_Dma_Check_Config ( dac_PeriphId_t periphId, dac_ChannelId_t channelId, const dac_DataConfig_t * const dataConfig );
 
 dac_RequestState_t Dac_Dma_Init         ( dac_PeriphId_t periphId, dac_ChannelId_t channelId );

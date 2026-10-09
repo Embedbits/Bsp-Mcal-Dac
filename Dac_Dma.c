@@ -34,8 +34,7 @@
 /** DAC channel DMA request connection to DMA stream */
 typedef struct
 {
-    dac_DmaPeriphId_t  DmaPeriphId;  /**< DMA peripheral of the request             */
-    dac_DmaChannelId_t DmaStreamId;  /**< DMA stream of the request                 */
+    dac_Dma_t          Dma;          /**< DMA stream of the request (item of the DMA stream list) */
     dma_PeriphReqId_t  ChannelSel;   /**< Channel selection (CHSEL) of the request  */
     dma_IsrCallback    XferCpltIsr;  /**< Transfer complete handler of the channel  */
     dma_IsrCallback    HalfXferIsr;  /**< Half transfer handler of the channel      */
@@ -61,6 +60,12 @@ static void               Dac_Dma_Ch2Error      ( void );
 
 /* =============================== MACROS =================================== */
 
+/** DMA peripheral of the DMA request of a DAC channel (decoded from the item of the DMA stream list) */
+#define DAC_DMA_REQ_PERIPH( reqConfig )     ( (dma_PeriphId_t)DAC_DMA_BIT_MASK_DECODE_DMA( (reqConfig)->Dma ) )
+
+/** DMA stream of the DMA request of a DAC channel (decoded from the item of the DMA stream list) */
+#define DAC_DMA_REQ_STREAM( reqConfig )     ( (dma_ChannelId_t)DAC_DMA_BIT_MASK_DECODE_STREAM( (reqConfig)->Dma ) )
+
 /* ========================== EXPORTED VARIABLES ============================ */
 
 /* =========================== LOCAL VARIABLES ============================== */
@@ -70,10 +75,10 @@ static const dac_DmaReqConfig_t dac_DmaReqConfig[ DAC_PERIPH_CNT ][ DAC_CHANNEL_
 {
     [DAC_PERIPH_1] =
     {
-        [DAC_CHANNEL_1] = { .DmaPeriphId = DAC_DMA_PERIPH_1, .DmaStreamId = DAC_DMA_CHANNEL_5, .ChannelSel = DMA_REQ_CHANNEL_7,
+        [DAC_CHANNEL_1] = { .Dma = DAC_DMA_DAC1_CH1_DMA1_STREAM5, .ChannelSel = DMA_REQ_CHANNEL_7,
                             .XferCpltIsr = Dac_Dma_Ch1XferCplt, .HalfXferIsr = Dac_Dma_Ch1HalfXfer, .ErrorIsr = Dac_Dma_Ch1Error },
 #if defined(DAC_CHANNEL2_SUPPORT)
-        [DAC_CHANNEL_2] = { .DmaPeriphId = DAC_DMA_PERIPH_1, .DmaStreamId = DAC_DMA_CHANNEL_6, .ChannelSel = DMA_REQ_CHANNEL_7,
+        [DAC_CHANNEL_2] = { .Dma = DAC_DMA_DAC1_CH2_DMA1_STREAM6, .ChannelSel = DMA_REQ_CHANNEL_7,
                             .XferCpltIsr = Dac_Dma_Ch2XferCplt, .HalfXferIsr = Dac_Dma_Ch2HalfXfer, .ErrorIsr = Dac_Dma_Ch2Error },
 #endif /* DAC_CHANNEL2_SUPPORT */
     },
@@ -90,28 +95,26 @@ static const dma_TransferMode_t dac_DmaModeLut[ DAC_BUFFER_MODE_CNT ] =
 /* ========================= EXPORTED FUNCTIONS ============================= */
 
 /**
- * \brief Returns DMA peripheral and stream connected to the DMA request of a DAC channel
+ * \brief Returns the DMA stream connected to the DMA request of a DAC channel (the only item of the DMA
+ *        stream list \ref dac_Dma_t of the channel)
  *
- * \param periphId      [in]: DAC peripheral identification, value from \ref dac_PeriphId_t
- * \param channelId     [in]: DAC channel identification, value from \ref dac_ChannelId_t
- * \param dmaPeriphId  [out]: Pointer to store the DMA peripheral. Must not be NULL.
- * \param dmaChannelId [out]: Pointer to store the DMA stream. Must not be NULL.
+ * \param periphId  [in]: DAC peripheral identification, value from \ref dac_PeriphId_t
+ * \param channelId [in]: DAC channel identification, value from \ref dac_ChannelId_t
+ * \param dma     [out]: Pointer to store the DMA stream. Must not be NULL.
  *
  * \return Function processing state. Returns \ref DAC_REQUEST_OK if request
  *         was processed without problems. Otherwise returns \ref DAC_REQUEST_ERROR.
  */
-dac_RequestState_t Dac_Dma_Get_Stream( dac_PeriphId_t periphId, dac_ChannelId_t channelId, dac_DmaPeriphId_t * const dmaPeriphId, dac_DmaChannelId_t * const dmaChannelId )
+dac_RequestState_t Dac_Dma_Get_Stream( dac_PeriphId_t periphId, dac_ChannelId_t channelId, dac_Dma_t * const dma )
 {
     dac_RequestState_t retState = DAC_REQUEST_ERROR;
 
-    if( ( DAC_PERIPH_CNT  > periphId     ) &&
-        ( DAC_CHANNEL_CNT > channelId    ) &&
-        ( DAC_NULL_PTR   != dmaPeriphId  ) &&
-        ( DAC_NULL_PTR   != dmaChannelId )    )
+    if( ( DAC_PERIPH_CNT  > periphId  ) &&
+        ( DAC_CHANNEL_CNT > channelId ) &&
+        ( DAC_NULL_PTR   != dma       )    )
     {
-        *dmaPeriphId  = dac_DmaReqConfig[ periphId ][ channelId ].DmaPeriphId;
-        *dmaChannelId = dac_DmaReqConfig[ periphId ][ channelId ].DmaStreamId;
-        retState      = DAC_REQUEST_OK;
+        *dma     = dac_DmaReqConfig[ periphId ][ channelId ].Dma;
+        retState = DAC_REQUEST_OK;
     }
     else
     {
@@ -129,8 +132,8 @@ dac_RequestState_t Dac_Dma_Get_Stream( dac_PeriphId_t periphId, dac_ChannelId_t 
  * \param channelId  [in]: DAC channel identification, value from \ref dac_ChannelId_t
  * \param dataConfig [in]: Pointer to data transfer configuration. Must not be NULL.
  *
- * \return Returns \ref DAC_REQUEST_OK if the DMA peripheral and stream match the DMA request
- *         mapping of the channel, the priority is valid, DataBuffer is set (outside of CCM data
+ * \return Returns \ref DAC_REQUEST_OK if the DMA stream is the item of the list \ref dac_Dma_t of the
+ *         channel (DMA request mapping), the priority is valid, DataBuffer is set (outside of CCM data
  *         RAM) and BufferSize is not 0. Otherwise returns \ref DAC_REQUEST_ERROR.
  */
 dac_RequestState_t Dac_Dma_Check_Config( dac_PeriphId_t periphId, dac_ChannelId_t channelId, const dac_DataConfig_t * const dataConfig )
@@ -145,8 +148,7 @@ dac_RequestState_t Dac_Dma_Check_Config( dac_PeriphId_t periphId, dac_ChannelId_
     {
         const dac_DmaReqConfig_t * const reqConfig = &dac_DmaReqConfig[ periphId ][ channelId ];
 
-        if( ( reqConfig->DmaPeriphId == dataConfig->DmaPeriphId  ) &&
-            ( reqConfig->DmaStreamId == dataConfig->DmaChannelId )    )
+        if( reqConfig->Dma == dataConfig->Dma )
         {
             retState = Dac_Dma_Check_Buffer( dataConfig->DataBuffer, dataConfig->BufferSize );
         }
@@ -206,8 +208,8 @@ dac_RequestState_t Dac_Dma_Init( dac_PeriphId_t periphId, dac_ChannelId_t channe
     if( DAC_REQUEST_OK == retState )
     {
         const dac_DmaReqConfig_t * const reqConfig = &dac_DmaReqConfig[ periphId ][ channelId ];
-        const dma_PeriphId_t             dmaPeriph = (dma_PeriphId_t)reqConfig->DmaPeriphId;
-        const dma_ChannelId_t            dmaStream = (dma_ChannelId_t)reqConfig->DmaStreamId;
+        const dma_PeriphId_t             dmaPeriph = DAC_DMA_REQ_PERIPH( reqConfig );
+        const dma_ChannelId_t            dmaStream = DAC_DMA_REQ_STREAM( reqConfig );
         dma_RequestState_t               dmaState  = DMA_REQUEST_ERROR;
         dma_ConfigStruct_t               dmaConfig;
 
@@ -319,8 +321,8 @@ dac_RequestState_t Dac_Dma_Deinit( dac_PeriphId_t periphId, dac_ChannelId_t chan
     if( DAC_REQUEST_OK == retState )
     {
         const dac_DmaReqConfig_t * const reqConfig = &dac_DmaReqConfig[ periphId ][ channelId ];
-        const dma_RequestState_t         dmaState  = Dma_Set_InterruptInactive( (dma_PeriphId_t)reqConfig->DmaPeriphId,
-                                                                                (dma_ChannelId_t)reqConfig->DmaStreamId );
+        const dma_RequestState_t         dmaState  = Dma_Set_InterruptInactive( DAC_DMA_REQ_PERIPH( reqConfig ),
+                                                                                DAC_DMA_REQ_STREAM( reqConfig ) );
 
         if( DMA_REQUEST_OK == dmaState )
         {
@@ -394,8 +396,8 @@ dac_RequestState_t Dac_Dma_Stop( dac_PeriphId_t periphId, dac_ChannelId_t channe
     if( DAC_REQUEST_OK == retState )
     {
         const dac_DmaReqConfig_t * const reqConfig = &dac_DmaReqConfig[ periphId ][ channelId ];
-        const dma_RequestState_t         dmaState  = Dma_Set_TransferInactive( (dma_PeriphId_t)reqConfig->DmaPeriphId,
-                                                                               (dma_ChannelId_t)reqConfig->DmaStreamId );
+        const dma_RequestState_t         dmaState  = Dma_Set_TransferInactive( DAC_DMA_REQ_PERIPH( reqConfig ),
+                                                                               DAC_DMA_REQ_STREAM( reqConfig ) );
 
         if( DMA_REQUEST_OK == dmaState )
         {
@@ -448,8 +450,8 @@ static dac_RequestState_t Dac_Dma_Set_Transfer( dac_PeriphId_t periphId, dac_Cha
         ( DAC_BUFFER_MODE_CNT  > xferCtx->Config.BufferMode )    )
     {
         const dac_DmaReqConfig_t * const reqConfig = &dac_DmaReqConfig[ periphId ][ channelId ];
-        const dma_PeriphId_t             dmaPeriph = (dma_PeriphId_t)reqConfig->DmaPeriphId;
-        const dma_ChannelId_t            dmaStream = (dma_ChannelId_t)reqConfig->DmaStreamId;
+        const dma_PeriphId_t             dmaPeriph = DAC_DMA_REQ_PERIPH( reqConfig );
+        const dma_ChannelId_t            dmaStream = DAC_DMA_REQ_STREAM( reqConfig );
         dma_RequestState_t               dmaState  = DMA_REQUEST_ERROR;
 
         dmaState = Dma_Set_TransferMode( dmaPeriph, dmaStream, dac_DmaModeLut[ xferCtx->Config.BufferMode ] );

@@ -567,7 +567,7 @@ dac_RequestState_t Dac_Get_DefaultConfig( dac_Config_t * const dacConfig )
                 channelCfg->DataConfig.ErrorCallback            = DAC_NULL_PTR;
 
                 /* DMA stream is given by the DMA request mapping of the channel */
-                retState = Dac_Dma_Get_Stream( periphIdx, channelIdx, &channelCfg->DataConfig.DmaPeriphId, &channelCfg->DataConfig.DmaChannelId );
+                retState = Dac_Dma_Get_Stream( periphIdx, channelIdx, &channelCfg->DataConfig.Dma );
             }
 
             periphCfg->Channels[ DAC_CHANNEL_1 ].ChannelUsed = DAC_FUNCTION_ACTIVE;

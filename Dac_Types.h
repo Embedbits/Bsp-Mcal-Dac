@@ -49,7 +49,57 @@
 /** Maximum sample and hold refresh time (sample and hold is not supported by STM32F4) */
 #define DAC_SH_REFRESH_TIME_MAX             ( 0x00FFu )
 
+/** DAC peripheral identification bit offset in encoded DMA stream value */
+#define DAC_DMA_BIT_MASK_PERIPH_BIT_OFFSET  ( 20u )
+
+/** DAC channel identification bit offset in encoded DMA stream value */
+#define DAC_DMA_BIT_MASK_CHANNEL_BIT_OFFSET ( 15u )
+
+/** DMA peripheral identification bit offset in encoded DMA stream value */
+#define DAC_DMA_BIT_MASK_DMA_BIT_OFFSET     ( 10u )
+
+/** Stream identification bit offset in encoded DMA stream value */
+#define DAC_DMA_BIT_MASK_STREAM_BIT_OFFSET  ( 5u )
+
+/** Channel selection (CHSEL) bit offset in encoded DMA stream value */
+#define DAC_DMA_BIT_MASK_CHSEL_BIT_OFFSET   ( 0u )
+
+/** Mask of one field (5 bits) in encoded DMA stream value */
+#define DAC_DMA_BIT_MASK_FIELD              ( 0x1Fu )
+
 /* ========================== EXPORTED MACROS =============================== */
+
+/**
+ * \brief Encodes DMA stream (DAC peripheral, DAC channel, DMA peripheral, stream, channel selection) into
+ *        single value of \ref dac_DmaCode_t
+ *
+ * The macro defines the values of the DMA stream list \ref dac_Dma_t, e.g. the DAC channel 1 request on DMA1
+ * stream 5 (channel selection 7) is \ref DAC_DMA_DAC1_CH1_DMA1_STREAM5:
+ * DAC_DMA_ENCODE( DAC_PERIPH_1, DAC_CHANNEL_1, DAC_DMA_PERIPH_1, DAC_DMA_CHANNEL_5, 7u )
+ */
+#define DAC_DMA_ENCODE( PERIPH_ID, CHANNEL_ID, DMA_ID, STREAM_ID, CHSEL )   ( (dac_DmaCode_t)( ( (uint32_t)(PERIPH_ID)  << DAC_DMA_BIT_MASK_PERIPH_BIT_OFFSET  ) | \
+                                                                                               ( (uint32_t)(CHANNEL_ID) << DAC_DMA_BIT_MASK_CHANNEL_BIT_OFFSET ) | \
+                                                                                               ( (uint32_t)(DMA_ID)     << DAC_DMA_BIT_MASK_DMA_BIT_OFFSET     ) | \
+                                                                                               ( (uint32_t)(STREAM_ID)  << DAC_DMA_BIT_MASK_STREAM_BIT_OFFSET  ) | \
+                                                                                               ( (uint32_t)(CHSEL)      << DAC_DMA_BIT_MASK_CHSEL_BIT_OFFSET   )   ) )
+
+/** Stream is not configured by the module (value of the DAC_DMA_UNUSED item of the DMA stream list) */
+#define DAC_DMA_CODE_UNUSED                 DAC_DMA_ENCODE( DAC_PERIPH_CNT, DAC_CHANNEL_CNT, DAC_DMA_PERIPH_CNT, DAC_DMA_CHANNEL_CNT, 0u )
+
+/** Extract DAC peripheral ID from encoded DMA stream value */
+#define DAC_DMA_BIT_MASK_DECODE_PERIPH( CODED_VAL )  ( ( (CODED_VAL) >> DAC_DMA_BIT_MASK_PERIPH_BIT_OFFSET ) & DAC_DMA_BIT_MASK_FIELD )
+
+/** Extract DAC channel ID from encoded DMA stream value */
+#define DAC_DMA_BIT_MASK_DECODE_CHANNEL( CODED_VAL ) ( ( (CODED_VAL) >> DAC_DMA_BIT_MASK_CHANNEL_BIT_OFFSET ) & DAC_DMA_BIT_MASK_FIELD )
+
+/** Extract DMA peripheral ID from encoded DMA stream value */
+#define DAC_DMA_BIT_MASK_DECODE_DMA( CODED_VAL )     ( ( (CODED_VAL) >> DAC_DMA_BIT_MASK_DMA_BIT_OFFSET ) & DAC_DMA_BIT_MASK_FIELD )
+
+/** Extract stream ID from encoded DMA stream value */
+#define DAC_DMA_BIT_MASK_DECODE_STREAM( CODED_VAL )  ( ( (CODED_VAL) >> DAC_DMA_BIT_MASK_STREAM_BIT_OFFSET ) & DAC_DMA_BIT_MASK_FIELD )
+
+/** Extract channel selection (CHSEL) from encoded DMA stream value */
+#define DAC_DMA_BIT_MASK_DECODE_CHSEL( CODED_VAL )   ( ( (CODED_VAL) >> DAC_DMA_BIT_MASK_CHSEL_BIT_OFFSET ) & DAC_DMA_BIT_MASK_FIELD )
 
 /* ============================== TYPEDEFS ================================== */
 
@@ -316,6 +366,10 @@ typedef enum
 }   dac_ErrorId_t;
 
 
+/** \brief Encoded DMA stream (value of \ref dac_Dma_t) */
+typedef uint32_t dac_DmaCode_t;
+
+
 /** DMA peripherals enumeration list
  *
  * \note DAC DMA requests are connected to DMA1 only (fixed request mapping).
@@ -333,7 +387,7 @@ typedef enum
 /** Enumeration of DMA transfer channels (DMA streams of STM32F4)
  *
  * \note DAC DMA requests are connected to fixed streams: DAC channel 1 to DMA1 stream 5,
- *       DAC channel 2 to DMA1 stream 6 (channel selection 7).
+ *       DAC channel 2 to DMA1 stream 6 (channel selection 7), see the list \ref dac_Dma_t.
  */
 typedef enum
 {
@@ -347,6 +401,23 @@ typedef enum
     DAC_DMA_CHANNEL_7 = DMA_STREAM_7, /**< DMA stream 7 */
     DAC_DMA_CHANNEL_CNT               /**< Count of DMA streams */
 }   dac_DmaChannelId_t;
+
+
+/**
+ * \brief List of DMA streams able to serve the DAC channel of the peripherals (STM32CubeMX database / reference
+ *        manual DMA request mapping, the channel selection of the stream is part of the value, streams
+ *        existing only on some STM32F4 lines are guarded by the CMSIS device line)
+ */
+typedef enum
+{
+#if defined(DAC)
+    DAC_DMA_DAC1_CH1_DMA1_STREAM5      = DAC_DMA_ENCODE( DAC_PERIPH_1, DAC_CHANNEL_1, DAC_DMA_PERIPH_1, DAC_DMA_CHANNEL_5, 7u ), /**< DAC channel 1 request on DMA1 stream 5 (channel selection 7) */
+#endif
+#if defined(DAC_CHANNEL2_SUPPORT)
+    DAC_DMA_DAC1_CH2_DMA1_STREAM6      = DAC_DMA_ENCODE( DAC_PERIPH_1, DAC_CHANNEL_2, DAC_DMA_PERIPH_1, DAC_DMA_CHANNEL_6, 7u ), /**< DAC channel 2 request on DMA1 stream 6 (channel selection 7) */
+#endif
+    DAC_DMA_UNUSED                     = DAC_DMA_CODE_UNUSED  /**< DMA stream is not selected */
+}   dac_Dma_t;
 
 
 /** DMA channel priority options enumeration */
@@ -390,9 +461,9 @@ typedef void ( dac_ErrCallback_t )( dac_ErrorId_t errorId );
  * Unused callback shall be set to DAC_NULL_PTR. All other fields are used only in
  * DAC_TRANSFER_MODE_DMA.
  *
- * \note STM32F4: DmaPeriphId / DmaChannelId must match the fixed DMA request mapping of the
- *       channel (see \ref dac_DmaChannelId_t, filled by Dac_Get_DefaultConfig()). DataBuffer
- *       must not be placed in CCM data RAM (not accessible by DMA).
+ * \note STM32F4: Dma has to be the item of the list \ref dac_Dma_t of the channel (the fixed DMA
+ *       request mapping, filled by Dac_Get_DefaultConfig()). DataBuffer must not be placed in
+ *       CCM data RAM (not accessible by DMA).
  */
 typedef struct
 {
@@ -401,8 +472,7 @@ typedef struct
     dac_BufferSize_t    BufferSize;               /**< Buffer size in count of dac_Data_t items (> 0)          */
     dac_BufferMode_t    BufferMode;               /**< One shot / circular buffer handling                     */
 
-    dac_DmaPeriphId_t   DmaPeriphId;              /**< DMA peripheral                                          */
-    dac_DmaChannelId_t  DmaChannelId;             /**< DMA channel (stream)                                    */
+    dac_Dma_t           Dma;                      /**< DMA stream of the channel request                       */
     dac_DmaPriority_t   DmaPriority;              /**< DMA channel priority                                    */
 
     dac_IrqPrio_t       IrqPriority;              /**< DAC interrupt priority (DMA underrun)                   */
