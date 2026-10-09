@@ -1406,6 +1406,11 @@ static rcc_RequestState_t Ut_Dac_RccGetClkStub( rcc_PeriphId_t periphId, rcc_Fre
     (void)periphId;
     (void)callCnt;
 
+    /* Dac_Set_Delay() asks for the clock after every register change the HW model reacts to
+     * (OTRIM -> CAL_FLAG). The model is let to finish whole cycles with the new register state
+     * before the module reads the flags back, the result does not depend on host load. */
+    (void)RegMem_Wait_ModelCycles( 1u );
+
     *periphClk = utDac_HclkHz;
 
     return ( RCC_REQUEST_OK );
