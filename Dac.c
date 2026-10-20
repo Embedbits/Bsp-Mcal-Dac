@@ -531,6 +531,7 @@ dac_RequestState_t Dac_Deinit( dac_PeriphId_t periphId )
 void Dac_Task( void )
 {
     /* No periodic processing required */
+    return;
 }
 
 
