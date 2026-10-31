@@ -494,7 +494,10 @@ static adc_Data_t It_Dac_Adc_Measure( void )
 
     TEST_ASSERT_EQUAL( ADC_REQUEST_OK, Adc_Set_RegStart( IT_DAC_ADC_PERIPH ) );
 
-    for( uint32_t loopIdx = 0u; ( IT_DAC_WAIT_LOOPS > loopIdx ) && ( expectedCnt > itDac_AdcCompleteCnt ); loopIdx++ )
+    for( uint32_t loopIdx = 0u;
+         ( IT_DAC_WAIT_LOOPS > loopIdx ) &&
+         ( expectedCnt > itDac_AdcCompleteCnt );
+         loopIdx++ )
     {
         Adc_Task();
     }
