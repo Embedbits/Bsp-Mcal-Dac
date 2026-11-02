@@ -141,7 +141,7 @@ if( DAC_REQUEST_OK == Dac_Init( &dacConfig ) )
   cmake --preset STM32F407xG_UnitTest && cmake --build --preset STM32F407xG_UnitTest
   ctest --test-dir Build/STM32F407xG_UnitTest -L Dac
   ```
-- Integration tests (target, STM32F4DISCOVERY): `Tests/IntegrationTests/ItTest_Dac.c` - DAC_OUT1 (PA4) / DAC_OUT2 (PA5) are measured by ADC1 channels 4 / 5 (same pins), TIM6 TRGO triggers DMA transfers, no external wiring is needed.
+- Integration tests (target, STM32F4DISCOVERY): `Tests/IntegrationTests/ItTest_Dac.c` - DAC_OUT1 (PA4) / DAC_OUT2 (PA5) are measured by ADC1 channels 4 / 5 (same pins), TIM6 TRGO triggers DMA transfers, no external wiring is needed. On NUCLEO-F446RE and NUCLEO-F413ZH PA5 is the SCK wire of the SPI loop (PA5 - PB13, an input here; on NUCLEO-F446RE also the LED LD2) - the measurement is not influenced.
 
 ---
 
