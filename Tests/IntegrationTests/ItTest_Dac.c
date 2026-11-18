@@ -975,6 +975,10 @@ static uint32_t It_Dac_Adc_Measure( void )
             {
                 break;
             }
+            else
+            {
+                /* No action required */
+            }
         }
 
         TEST_ASSERT_EQUAL( ADC_FLAG_ACTIVE, eocFlag );
@@ -1052,6 +1056,10 @@ static uint32_t It_Dac_Wait( volatile uint32_t * const counter, uint32_t expecte
         {
             break;
         }
+        else
+        {
+            /* No action required */
+        }
     }
 
     return ( *counter );
@@ -1079,6 +1087,10 @@ static dac_Data_t It_Dac_Wait_OutputData( dac_PeriphId_t periphId, dac_ChannelId
         if( expectedData == outData )
         {
             break;
+        }
+        else
+        {
+            /* No action required */
         }
     }
 
