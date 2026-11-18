@@ -23,7 +23,10 @@
  *   NUCLEO-F756ZG (board file override with the name STM32F756xG), NUCLEO-F767ZI
  *   (Nucleo-144 boards, common pinout)
  *
- * \note Nucleo-144: PA4 / PA5 are free (PA5 Arduino D13). 32F746GDISCOVERY: PA4 is the
+ * \note Nucleo-144: PA4 is free, PA5 (Arduino D13) is SCK of SPI1 and is wired to PB13 (SCK of
+ *       SPI2) on the boards of the IT agent (NUCLEO-F722ZE, feature SPI1_SPI2_LOOP). PB13 is a
+ *       floating input in this test set (reset state), the wire does not influence the output of
+ *       DAC_OUT2 (checked on NUCLEO-F722ZE). 32F746GDISCOVERY: PA4 is the
  *       DCMI_HSYNC input of the camera connector (high impedance without camera), PA5 is
  *       driven by the ULPI clock output of the USB HS PHY - tests with DAC_OUT2 on the pin
  *       are ignored on this board (\ref IT_DAC_OUT2_FREE).
@@ -43,18 +46,18 @@
 
 /* ======================= FORWARD DECLARATIONS ============================= */
 
-static void         It_Dac_Get_Config       ( dac_Config_t * const config );
-static void         It_Dac_Set_DmaConfig    ( dac_ChannelConfig_t * const channelConfig, dac_BufferMode_t bufferMode );
-static void         It_Dac_Adc_Init         ( adc_ChannelId_t adcChannel );
-static uint32_t     It_Dac_Adc_Measure      ( void );
-static void         It_Dac_Tim6_Start       ( void );
-static void         It_Dac_Tim6_Stop        ( void );
-static uint32_t     It_Dac_Wait             ( volatile uint32_t * const counter, uint32_t expectedCnt );
-static uint32_t     It_Dac_Get_Diff         ( uint32_t valueA, uint32_t valueB );
+static void         ItDac_Get_Config        ( dac_Config_t * const config );
+static void         ItDac_Set_DmaConfig     ( dac_ChannelConfig_t * const channelConfig, dac_BufferMode_t bufferMode );
+static void         ItDac_Adc_Init          ( adc_ChannelId_t adcChannel );
+static uint32_t     ItDac_Adc_Measure       ( void );
+static void         ItDac_Tim6_Start        ( void );
+static void         ItDac_Tim6_Stop         ( void );
+static uint32_t     ItDac_Wait              ( volatile uint32_t * const counter, uint32_t expectedCnt );
+static uint32_t     ItDac_Get_Diff          ( uint32_t valueA, uint32_t valueB );
 
-static void         It_Dac_HalfCallback     ( void );
-static void         It_Dac_CompleteCallback ( void );
-static void         It_Dac_ErrorCallback    ( dac_ErrorId_t errorId );
+static void         ItDac_HalfCallback      ( void );
+static void         ItDac_CompleteCallback  ( void );
+static void         ItDac_ErrorCallback     ( dac_ErrorId_t errorId );
 
 /* ========================= SYMBOLIC CONSTANTS ============================= */
 
@@ -106,7 +109,7 @@ static void         It_Dac_ErrorCallback    ( dac_ErrorId_t errorId );
 
     /* NUCLEO-F722ZE / NUCLEO-F756ZG / NUCLEO-F767ZI (Nucleo-144) */
 
-    /** DAC_OUT2 (PA5, Arduino D13) is free */
+    /** DAC_OUT2 (PA5, Arduino D13, wired to the input PB13 on the boards of the IT agent) is usable */
     #define IT_DAC_OUT2_FREE                ( 1u )
 
 #else
@@ -173,7 +176,7 @@ void It_Dac_Init_DefaultConfig_ReadBack( void )
     dac_SampleHoldConfig_t shConfig     = { .State = DAC_FUNCTION_ACTIVE };
     rcc_FunctionState_t    rccState     = RCC_FUNCTION_INACTIVE;
 
-    It_Dac_Get_Config( &config );
+    ItDac_Get_Config( &config );
     TEST_ASSERT_EQUAL( DAC_REQUEST_OK, Dac_Init( &config ) );
 
     TEST_ASSERT_EQUAL( RCC_REQUEST_OK, Rcc_Get_PeriphState( RCC_PERIPH_DAC, &rccState ) );
@@ -220,23 +223,23 @@ void It_Dac_Init_InvalidConfig_ReturnsError( void )
 
     TEST_ASSERT_EQUAL( DAC_REQUEST_ERROR, Dac_Init( DAC_NULL_PTR ) );
 
-    It_Dac_Get_Config( &config );
+    ItDac_Get_Config( &config );
     config.PeriphConfig[ IT_DAC_PERIPH ].Channels[ IT_DAC_CHANNEL ].InitValue = DAC_DATA_12BIT_MAX + 1u;
     TEST_ASSERT_EQUAL( DAC_REQUEST_ERROR, Dac_Init( &config ) );
 
-    It_Dac_Get_Config( &config );
-    It_Dac_Set_DmaConfig( &config.PeriphConfig[ IT_DAC_PERIPH ].Channels[ IT_DAC_CHANNEL ], DAC_BUFFER_MODE_ONE_SHOT );
+    ItDac_Get_Config( &config );
+    ItDac_Set_DmaConfig( &config.PeriphConfig[ IT_DAC_PERIPH ].Channels[ IT_DAC_CHANNEL ], DAC_BUFFER_MODE_ONE_SHOT );
     config.PeriphConfig[ IT_DAC_PERIPH ].Channels[ IT_DAC_CHANNEL ].TriggerId = DAC_TRIGGER_NONE;
     TEST_ASSERT_EQUAL( DAC_REQUEST_ERROR, Dac_Init( &config ) );
 
-    It_Dac_Get_Config( &config );
+    ItDac_Get_Config( &config );
     config.PeriphConfig[ IT_DAC_PERIPH ].Channels[ IT_DAC_CHANNEL ].OutputMode = DAC_OUTPUT_INTERNAL;
     TEST_ASSERT_EQUAL( DAC_REQUEST_ERROR, Dac_Init( &config ) );
 
     TEST_ASSERT_EQUAL( DAC_REQUEST_OK, Dac_Get_ChannelState( IT_DAC_PERIPH, IT_DAC_CHANNEL, &channelState ) );
     TEST_ASSERT_EQUAL( DAC_FUNCTION_INACTIVE, channelState );
 
-    It_Dac_Get_Config( &config );
+    ItDac_Get_Config( &config );
     TEST_ASSERT_EQUAL( DAC_REQUEST_OK, Dac_Init( &config ) );
     TEST_ASSERT_EQUAL( DAC_REQUEST_ERROR, Dac_Init( &config ) );
 }
@@ -255,7 +258,7 @@ void It_Dac_Deinit_InitializedPeripheral_InitializationPossibleAgain( void )
     dac_FunctionState_t channelState = DAC_FUNCTION_INACTIVE;
     rcc_FunctionState_t rccState     = RCC_FUNCTION_ACTIVE;
 
-    It_Dac_Get_Config( &config );
+    ItDac_Get_Config( &config );
     TEST_ASSERT_EQUAL( DAC_REQUEST_OK, Dac_Init( &config ) );
     TEST_ASSERT_EQUAL( DAC_REQUEST_OK, Dac_Deinit( IT_DAC_PERIPH ) );
 
@@ -283,7 +286,7 @@ void It_Dac_UnsupportedFeatures_ReturnError( void )
     dac_Data_t                   outData      = 0u;
     const dac_SampleHoldConfig_t shConfig     = { .State = DAC_FUNCTION_ACTIVE, .SampleTime = 1u, .HoldTime = 1u, .RefreshTime = 1u };
 
-    It_Dac_Get_Config( &config );
+    ItDac_Get_Config( &config );
     TEST_ASSERT_EQUAL( DAC_REQUEST_OK, Dac_Init( &config ) );
 
     TEST_ASSERT_EQUAL( DAC_REQUEST_ERROR, Dac_Set_Calibration( IT_DAC_PERIPH, IT_DAC_CHANNEL ) );
@@ -312,7 +315,7 @@ void It_Dac_Set_Data_NoTrigger_OutputRegisterUpdated( void )
     dac_Config_t config;
     dac_Data_t   outData = 0u;
 
-    It_Dac_Get_Config( &config );
+    ItDac_Get_Config( &config );
     TEST_ASSERT_EQUAL( DAC_REQUEST_OK, Dac_Init( &config ) );
 
     TEST_ASSERT_EQUAL( DAC_REQUEST_OK, Dac_Set_Data( IT_DAC_PERIPH, IT_DAC_CHANNEL, 0x0ABCu ) );
@@ -343,7 +346,7 @@ void It_Dac_Set_SwTrigger_SoftwareTrigger_OutputUpdatedOnTrigger( void )
     dac_Config_t config;
     dac_Data_t   outData = 0xFFFFu;
 
-    It_Dac_Get_Config( &config );
+    ItDac_Get_Config( &config );
     config.PeriphConfig[ IT_DAC_PERIPH ].Channels[ IT_DAC_CHANNEL ].TriggerId = DAC_TRIGGER_SOFTWARE;
     config.PeriphConfig[ IT_DAC_PERIPH ].Channels[ IT_DAC_CHANNEL ].InitValue = 0u;
     TEST_ASSERT_EQUAL( DAC_REQUEST_OK, Dac_Init( &config ) );
@@ -375,7 +378,7 @@ void It_Dac_Set_DualData_BothChannels_OutputsUpdated( void )
     dac_Config_t config;
     dac_Data_t   outData = 0xFFFFu;
 
-    It_Dac_Get_Config( &config );
+    ItDac_Get_Config( &config );
     config.PeriphConfig[ IT_DAC_PERIPH ].Channels[ DAC_CHANNEL_1 ].TriggerId   = DAC_TRIGGER_SOFTWARE;
     config.PeriphConfig[ IT_DAC_PERIPH ].Channels[ DAC_CHANNEL_2 ].ChannelUsed = DAC_FUNCTION_ACTIVE;
     config.PeriphConfig[ IT_DAC_PERIPH ].Channels[ DAC_CHANNEL_2 ].TriggerId   = DAC_TRIGGER_SOFTWARE;
@@ -410,7 +413,7 @@ void It_Dac_Set_WaveMode_Triangle_OutputFollowsTriangle( void )
     dac_Data_t   outData  = 0u;
     dac_Data_t   lastData = 0u;
 
-    It_Dac_Get_Config( &config );
+    ItDac_Get_Config( &config );
     config.PeriphConfig[ IT_DAC_PERIPH ].Channels[ IT_DAC_CHANNEL ].TriggerId     = DAC_TRIGGER_SOFTWARE;
     config.PeriphConfig[ IT_DAC_PERIPH ].Channels[ IT_DAC_CHANNEL ].WaveMode      = DAC_WAVE_TRIANGLE;
     config.PeriphConfig[ IT_DAC_PERIPH ].Channels[ IT_DAC_CHANNEL ].WaveAmplitude = DAC_WAVE_AMPLITUDE_4095;
@@ -444,17 +447,17 @@ void It_Dac_Set_Data_BufferedOutput_AdcMeasuresOutput( void )
     const dac_Data_t testValues[ ] = { IT_DAC_VALUE_LOW, IT_DAC_VALUE_MID, IT_DAC_VALUE_HIGH };
     dac_Config_t     config;
 
-    It_Dac_Get_Config( &config );
+    ItDac_Get_Config( &config );
     TEST_ASSERT_EQUAL( DAC_REQUEST_OK, Dac_Init( &config ) );
-    It_Dac_Adc_Init( IT_DAC_ADC_CHANNEL_OUT1 );
+    ItDac_Adc_Init( IT_DAC_ADC_CHANNEL_OUT1 );
 
     for( uint32_t valueIdx = 0u; ( sizeof( testValues ) / sizeof( dac_Data_t ) ) > valueIdx; valueIdx++ )
     {
         TEST_ASSERT_EQUAL( DAC_REQUEST_OK, Dac_Set_Data( IT_DAC_PERIPH, IT_DAC_CHANNEL, testValues[ valueIdx ] ) );
 
-        const uint32_t adcResult = It_Dac_Adc_Measure();
+        const uint32_t adcResult = ItDac_Adc_Measure();
 
-        TEST_ASSERT_LESS_THAN( IT_DAC_TOLERANCE_LSB, It_Dac_Get_Diff( testValues[ valueIdx ], adcResult ) );
+        TEST_ASSERT_LESS_THAN( IT_DAC_TOLERANCE_LSB, ItDac_Get_Diff( testValues[ valueIdx ], adcResult ) );
     }
 }
 
@@ -477,20 +480,20 @@ void It_Dac_Set_Data_UnbufferedOutput_AdcMeasuresOutput( void )
     dac_Config_t     config;
     dac_OutputMode_t outputMode = DAC_OUTPUT_CNT;
 
-    It_Dac_Get_Config( &config );
+    ItDac_Get_Config( &config );
     config.PeriphConfig[ IT_DAC_PERIPH ].Channels[ DAC_CHANNEL_1 ].ChannelUsed = DAC_FUNCTION_INACTIVE;
     config.PeriphConfig[ IT_DAC_PERIPH ].Channels[ DAC_CHANNEL_2 ].ChannelUsed = DAC_FUNCTION_ACTIVE;
     config.PeriphConfig[ IT_DAC_PERIPH ].Channels[ DAC_CHANNEL_2 ].OutputMode  = DAC_OUTPUT_PIN_UNBUFFERED;
     config.PeriphConfig[ IT_DAC_PERIPH ].Channels[ DAC_CHANNEL_2 ].InitValue   = IT_DAC_VALUE_MID;
     TEST_ASSERT_EQUAL( DAC_REQUEST_OK, Dac_Init( &config ) );
-    It_Dac_Adc_Init( IT_DAC_ADC_CHANNEL_OUT2 );
+    ItDac_Adc_Init( IT_DAC_ADC_CHANNEL_OUT2 );
 
     TEST_ASSERT_EQUAL( DAC_REQUEST_OK, Dac_Get_OutputMode( IT_DAC_PERIPH, DAC_CHANNEL_2, &outputMode ) );
     TEST_ASSERT_EQUAL( DAC_OUTPUT_PIN_UNBUFFERED, outputMode );
 
-    const uint32_t adcResult = It_Dac_Adc_Measure();
+    const uint32_t adcResult = ItDac_Adc_Measure();
 
-    TEST_ASSERT_LESS_THAN( IT_DAC_TOLERANCE_LSB, It_Dac_Get_Diff( IT_DAC_VALUE_MID, adcResult ) );
+    TEST_ASSERT_LESS_THAN( IT_DAC_TOLERANCE_LSB, ItDac_Get_Diff( IT_DAC_VALUE_MID, adcResult ) );
 #endif /* IT_DAC_OUT2_FREE */
 }
 
@@ -507,17 +510,17 @@ void It_Dac_Set_Voltage_HalfReference_OutputVoltageMatches( void )
     dac_Config_t     config;
     dac_Voltage_mV_t outVoltage = 0u;
 
-    It_Dac_Get_Config( &config );
+    ItDac_Get_Config( &config );
     TEST_ASSERT_EQUAL( DAC_REQUEST_OK, Dac_Init( &config ) );
-    It_Dac_Adc_Init( IT_DAC_ADC_CHANNEL_OUT1 );
+    ItDac_Adc_Init( IT_DAC_ADC_CHANNEL_OUT1 );
 
     TEST_ASSERT_EQUAL( DAC_REQUEST_OK, Dac_Set_Voltage( IT_DAC_PERIPH, IT_DAC_CHANNEL, IT_DAC_VREF_MV, IT_DAC_VREF_MV / 2u ) );
     TEST_ASSERT_EQUAL( DAC_REQUEST_OK, Dac_Get_OutputVoltage( IT_DAC_PERIPH, IT_DAC_CHANNEL, IT_DAC_VREF_MV, &outVoltage ) );
     TEST_ASSERT_UINT_WITHIN( 1u, IT_DAC_VREF_MV / 2u, outVoltage );
 
-    const uint32_t adcResult = It_Dac_Adc_Measure();
+    const uint32_t adcResult = ItDac_Adc_Measure();
 
-    TEST_ASSERT_LESS_THAN( IT_DAC_TOLERANCE_LSB, It_Dac_Get_Diff( IT_DAC_VALUE_MID, adcResult ) );
+    TEST_ASSERT_LESS_THAN( IT_DAC_TOLERANCE_LSB, ItDac_Get_Diff( IT_DAC_VALUE_MID, adcResult ) );
 }
 
 /*------------------------------- DMA transfer -------------------------------*/
@@ -537,8 +540,8 @@ void It_Dac_Set_DmaStart_HwTrigger_StartStopHandled( void )
 {
     dac_Config_t config;
 
-    It_Dac_Get_Config( &config );
-    It_Dac_Set_DmaConfig( &config.PeriphConfig[ IT_DAC_PERIPH ].Channels[ IT_DAC_CHANNEL ], DAC_BUFFER_MODE_CIRCULAR );
+    ItDac_Get_Config( &config );
+    ItDac_Set_DmaConfig( &config.PeriphConfig[ IT_DAC_PERIPH ].Channels[ IT_DAC_CHANNEL ], DAC_BUFFER_MODE_CIRCULAR );
     TEST_ASSERT_EQUAL( DAC_REQUEST_OK, Dac_Init( &config ) );
 
     TEST_ASSERT_EQUAL( DAC_REQUEST_OK, Dac_Set_DmaStart( IT_DAC_PERIPH, IT_DAC_CHANNEL ) );
@@ -566,14 +569,14 @@ void It_Dac_DmaOneShot_Tim6Trigger_BufferOutput( void )
     dac_Config_t config;
     dac_Data_t   outData = 0u;
 
-    It_Dac_Get_Config( &config );
-    It_Dac_Set_DmaConfig( &config.PeriphConfig[ IT_DAC_PERIPH ].Channels[ IT_DAC_CHANNEL ], DAC_BUFFER_MODE_ONE_SHOT );
+    ItDac_Get_Config( &config );
+    ItDac_Set_DmaConfig( &config.PeriphConfig[ IT_DAC_PERIPH ].Channels[ IT_DAC_CHANNEL ], DAC_BUFFER_MODE_ONE_SHOT );
     TEST_ASSERT_EQUAL( DAC_REQUEST_OK, Dac_Init( &config ) );
 
     TEST_ASSERT_EQUAL( DAC_REQUEST_OK, Dac_Set_DmaStart( IT_DAC_PERIPH, IT_DAC_CHANNEL ) );
-    It_Dac_Tim6_Start();
+    ItDac_Tim6_Start();
 
-    TEST_ASSERT_EQUAL_UINT32( 1u, It_Dac_Wait( &itDac_CompleteCnt, 1u ) );
+    TEST_ASSERT_EQUAL_UINT32( 1u, ItDac_Wait( &itDac_CompleteCnt, 1u ) );
 
     /* The last item is moved from the data holding register to the output by the next trigger */
     for( uint32_t loopIdx = 0u;
@@ -584,7 +587,7 @@ void It_Dac_DmaOneShot_Tim6Trigger_BufferOutput( void )
         TEST_ASSERT_EQUAL( DAC_REQUEST_OK, Dac_Get_OutputData( IT_DAC_PERIPH, IT_DAC_CHANNEL, &outData ) );
     }
 
-    It_Dac_Tim6_Stop();
+    ItDac_Tim6_Stop();
 
     TEST_ASSERT_EQUAL( itDac_DmaBuffer[ IT_DAC_BUF_SIZE - 1u ], outData );
     TEST_ASSERT_EQUAL_UINT32( 1u, itDac_HalfCnt );
@@ -613,18 +616,18 @@ void It_Dac_DmaCircular_Tim6Trigger_BufferRepeated( void )
 #else
     dac_Config_t config;
 
-    It_Dac_Get_Config( &config );
+    ItDac_Get_Config( &config );
     config.PeriphConfig[ IT_DAC_PERIPH ].Channels[ DAC_CHANNEL_1 ].ChannelUsed = DAC_FUNCTION_INACTIVE;
     config.PeriphConfig[ IT_DAC_PERIPH ].Channels[ DAC_CHANNEL_2 ].ChannelUsed = DAC_FUNCTION_ACTIVE;
-    It_Dac_Set_DmaConfig( &config.PeriphConfig[ IT_DAC_PERIPH ].Channels[ DAC_CHANNEL_2 ], DAC_BUFFER_MODE_CIRCULAR );
+    ItDac_Set_DmaConfig( &config.PeriphConfig[ IT_DAC_PERIPH ].Channels[ DAC_CHANNEL_2 ], DAC_BUFFER_MODE_CIRCULAR );
     TEST_ASSERT_EQUAL( DAC_REQUEST_OK, Dac_Init( &config ) );
 
     TEST_ASSERT_EQUAL( DAC_REQUEST_OK, Dac_Set_DmaStart( IT_DAC_PERIPH, DAC_CHANNEL_2 ) );
-    It_Dac_Tim6_Start();
+    ItDac_Tim6_Start();
 
-    TEST_ASSERT_EQUAL_UINT32( 3u, It_Dac_Wait( &itDac_CompleteCnt, 3u ) );
+    TEST_ASSERT_EQUAL_UINT32( 3u, ItDac_Wait( &itDac_CompleteCnt, 3u ) );
     TEST_ASSERT_EQUAL( DAC_REQUEST_OK, Dac_Set_DmaStop( IT_DAC_PERIPH, DAC_CHANNEL_2 ) );
-    It_Dac_Tim6_Stop();
+    ItDac_Tim6_Stop();
 
     TEST_ASSERT_GREATER_OR_EQUAL_UINT32( 3u, itDac_HalfCnt );
     TEST_ASSERT_EQUAL_UINT32( 0u, itDac_ErrorCnt );
@@ -648,19 +651,19 @@ void It_Dac_DmaUnderrun_StreamDisabled_ErrorReported( void )
     dac_DataConfig_t dataConfig;
     dac_FlagState_t  underrunFlag = DAC_FLAG_ACTIVE;
 
-    It_Dac_Get_Config( &config );
-    It_Dac_Set_DmaConfig( &config.PeriphConfig[ IT_DAC_PERIPH ].Channels[ IT_DAC_CHANNEL ], DAC_BUFFER_MODE_CIRCULAR );
+    ItDac_Get_Config( &config );
+    ItDac_Set_DmaConfig( &config.PeriphConfig[ IT_DAC_PERIPH ].Channels[ IT_DAC_CHANNEL ], DAC_BUFFER_MODE_CIRCULAR );
     TEST_ASSERT_EQUAL( DAC_REQUEST_OK, Dac_Init( &config ) );
     TEST_ASSERT_EQUAL( DAC_REQUEST_OK, Dac_Get_DataConfig( IT_DAC_PERIPH, IT_DAC_CHANNEL, &dataConfig ) );
 
     TEST_ASSERT_EQUAL( DAC_REQUEST_OK, Dac_Set_DmaStart( IT_DAC_PERIPH, IT_DAC_CHANNEL ) );
-    It_Dac_Tim6_Start();
-    TEST_ASSERT_EQUAL_UINT32( 1u, It_Dac_Wait( &itDac_CompleteCnt, 1u ) );
+    ItDac_Tim6_Start();
+    TEST_ASSERT_EQUAL_UINT32( 1u, ItDac_Wait( &itDac_CompleteCnt, 1u ) );
 
     TEST_ASSERT_EQUAL( DMA_REQUEST_OK, Dma_Set_TransferInactive( (dma_PeriphId_t)DAC_DMA_BIT_MASK_DECODE_DMA( dataConfig.Dma ), (dma_ChannelId_t)DAC_DMA_BIT_MASK_DECODE_STREAM( dataConfig.Dma ) ) );
 
-    TEST_ASSERT_EQUAL_UINT32( 1u, It_Dac_Wait( &itDac_ErrorCnt, 1u ) );
-    It_Dac_Tim6_Stop();
+    TEST_ASSERT_EQUAL_UINT32( 1u, ItDac_Wait( &itDac_ErrorCnt, 1u ) );
+    ItDac_Tim6_Stop();
 
     TEST_ASSERT_EQUAL( DAC_ERROR_DMA_UNDERRUN, itDac_LastError );
     TEST_ASSERT_EQUAL( DAC_REQUEST_OK, Dac_Get_Flag( IT_DAC_PERIPH, IT_DAC_CHANNEL, DAC_FLAG_DMA_UNDERRUN, &underrunFlag ) );
@@ -676,7 +679,7 @@ void It_Dac_DmaUnderrun_StreamDisabled_ErrorReported( void )
  *
  * \param config [out]: Module configuration
  */
-static void It_Dac_Get_Config( dac_Config_t * const config )
+static void ItDac_Get_Config( dac_Config_t * const config )
 {
     TEST_ASSERT_EQUAL( DAC_REQUEST_OK, Dac_Get_DefaultConfig( config ) );
 }
@@ -689,7 +692,7 @@ static void It_Dac_Get_Config( dac_Config_t * const config )
  * \param channelConfig [in,out]: Channel configuration
  * \param bufferMode        [in]: One shot / circular
  */
-static void It_Dac_Set_DmaConfig( dac_ChannelConfig_t * const channelConfig, dac_BufferMode_t bufferMode )
+static void ItDac_Set_DmaConfig( dac_ChannelConfig_t * const channelConfig, dac_BufferMode_t bufferMode )
 {
     channelConfig->TriggerId                           = DAC_TRIGGER_TIM6_TRGO;
     channelConfig->DataConfig.TransferMode             = DAC_TRANSFER_MODE_DMA;
@@ -698,9 +701,9 @@ static void It_Dac_Set_DmaConfig( dac_ChannelConfig_t * const channelConfig, dac
     channelConfig->DataConfig.BufferMode               = bufferMode;
     channelConfig->DataConfig.DmaPriority              = DAC_DMA_PRIORITY_HIGH;
     channelConfig->DataConfig.IrqPriority              = IT_DAC_IRQ_PRIO;
-    channelConfig->DataConfig.HalfTransferCallback     = It_Dac_HalfCallback;
-    channelConfig->DataConfig.TransferCompleteCallback = It_Dac_CompleteCallback;
-    channelConfig->DataConfig.ErrorCallback            = It_Dac_ErrorCallback;
+    channelConfig->DataConfig.HalfTransferCallback     = ItDac_HalfCallback;
+    channelConfig->DataConfig.TransferCompleteCallback = ItDac_CompleteCallback;
+    channelConfig->DataConfig.ErrorCallback            = ItDac_ErrorCallback;
 }
 
 
@@ -711,7 +714,7 @@ static void It_Dac_Set_DmaConfig( dac_ChannelConfig_t * const channelConfig, dac
  *
  * \param adcChannel [in]: ADC1 channel connected to the measured DAC output
  */
-static void It_Dac_Adc_Init( adc_ChannelId_t adcChannel )
+static void ItDac_Adc_Init( adc_ChannelId_t adcChannel )
 {
     adc_Config_t config = { 0 };
 
@@ -753,22 +756,22 @@ static void It_Dac_Adc_Init( adc_ChannelId_t adcChannel )
  *
  * \return ADC result (12-bit)
  */
-static uint32_t It_Dac_Adc_Measure( void )
+static uint32_t ItDac_Adc_Measure( void )
 {
     adc_Data_t adcResult = 0u;
 
     for( uint32_t convIdx = 0u; 2u > convIdx; convIdx++ )
     {
         adc_FlagState_t eocFlag = ADC_FLAG_INACTIVE;
-        uint32_t        loopIdx = 0u;
 
         TEST_ASSERT_EQUAL( ADC_REQUEST_OK, Adc_Set_RegStart( ADC_PERIPH_1 ) );
 
-        while( ( IT_DAC_WAIT_LOOPS > loopIdx ) &&
-               ( ADC_FLAG_INACTIVE == eocFlag )    )
+        for( uint32_t loopIdx = 0u;
+             ( IT_DAC_WAIT_LOOPS > loopIdx ) &&
+             ( ADC_FLAG_INACTIVE == eocFlag );
+             loopIdx++ )
         {
             TEST_ASSERT_EQUAL( ADC_REQUEST_OK, Adc_Get_Flag( ADC_PERIPH_1, ADC_FLAG_REG_EOC, &eocFlag ) );
-            loopIdx++;
         }
 
         TEST_ASSERT_EQUAL( ADC_FLAG_ACTIVE, eocFlag );
@@ -784,7 +787,7 @@ static uint32_t It_Dac_Adc_Measure( void )
 /**
  * \brief Starts TIM6 with update event as TRGO (hardware trigger of the DAC).
  */
-static void It_Dac_Tim6_Start( void )
+static void ItDac_Tim6_Start( void )
 {
     TEST_ASSERT_EQUAL( RCC_REQUEST_OK, Rcc_Set_PeriphActive( RCC_PERIPH_TIM6 ) );
 
@@ -799,7 +802,7 @@ static void It_Dac_Tim6_Start( void )
 /**
  * \brief Stops TIM6 (no further DAC triggers).
  */
-static void It_Dac_Tim6_Stop( void )
+static void ItDac_Tim6_Stop( void )
 {
     LL_TIM_DisableCounter( TIM6 );
 }
@@ -813,7 +816,7 @@ static void It_Dac_Tim6_Stop( void )
  *
  * \return Counter value at the end of the wait
  */
-static uint32_t It_Dac_Wait( volatile uint32_t * const counter, uint32_t expectedCnt )
+static uint32_t ItDac_Wait( volatile uint32_t * const counter, uint32_t expectedCnt )
 {
     for( uint32_t loopIdx = 0u;
          ( IT_DAC_WAIT_LOOPS > loopIdx ) &&
@@ -835,7 +838,7 @@ static uint32_t It_Dac_Wait( volatile uint32_t * const counter, uint32_t expecte
  *
  * \return |valueA - valueB|
  */
-static uint32_t It_Dac_Get_Diff( uint32_t valueA, uint32_t valueB )
+static uint32_t ItDac_Get_Diff( uint32_t valueA, uint32_t valueB )
 {
     uint32_t diff = 0u;
 
@@ -853,14 +856,14 @@ static uint32_t It_Dac_Get_Diff( uint32_t valueA, uint32_t valueB )
 
 
 /** \brief DAC half transfer callback */
-static void It_Dac_HalfCallback( void )
+static void ItDac_HalfCallback( void )
 {
     itDac_HalfCnt++;
 }
 
 
 /** \brief DAC transfer complete callback */
-static void It_Dac_CompleteCallback( void )
+static void ItDac_CompleteCallback( void )
 {
     itDac_CompleteCnt++;
 }
@@ -871,7 +874,7 @@ static void It_Dac_CompleteCallback( void )
  *
  * \param errorId [in]: Error identification
  */
-static void It_Dac_ErrorCallback( dac_ErrorId_t errorId )
+static void ItDac_ErrorCallback( dac_ErrorId_t errorId )
 {
     itDac_LastError = errorId;
     itDac_ErrorCnt++;
